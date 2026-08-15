@@ -153,6 +153,11 @@ reference collection this saves ~10 s of startup. The system-select view itself
 is still built at startup (it is the first screen) and remains the largest
 remaining fixed cost on slow storage.
 
+Switching themes still works correctly with this enabled: `reloadAll()` reloads
+the theme for every system rather than only the systems that currently have a
+built gamelist view, so a theme change applies immediately without needing a
+restart.
+
 ## Expected impact
 
 These changes primarily speed up **initial system population** (the directory

@@ -1560,10 +1560,14 @@ void ViewController::reloadAll()
     mGamelistViews.clear();
     mCurrentView = nullptr;
 
-    // Load themes, create GamelistViews and reset filters.
-    for (auto it = cursorMap.cbegin(); it != cursorMap.cend(); ++it) {
-        it->first->loadTheme(ThemeTriggers::TriggerType::NONE);
-        it->first->getIndex()->resetFilters();
+    // Load themes and reset filters for every system. This must cover the full system
+    // vector rather than just the systems that currently have a gamelist view: when
+    // gamelist views are built lazily (PreloadGamelistViews disabled), mGamelistViews
+    // only contains the systems that have been visited, so only reloading those would
+    // leave the rest stuck on the old theme until the application is restarted.
+    for (auto& system : SystemData::sSystemVector) {
+        system->loadTheme(ThemeTriggers::TriggerType::NONE);
+        system->getIndex()->resetFilters();
     }
 
     ThemeData::setThemeTransitions();
