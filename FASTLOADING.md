@@ -197,6 +197,32 @@ Notes:
 - Ninja build artifacts are gitignored; the in-source build directory is the
   repository root.
 
+## Application updater
+
+The in-app updater originally checked es-de.org for official ES-DE releases.
+It now checks this fork's own `latest_release.json` (served from the root of the
+`beelzebud/ES-DE-Turbo` GitHub repository), so fork users are never offered the
+official build.
+
+To cut a new release:
+
+1. Bump `PROGRAM_VERSION_*` and `PROGRAM_RELEASE_NUMBER` in
+   `es-core/src/ApplicationVersion.h`. The release number **must increase**,
+   because the updater only reports a newer version when the feed's release
+   number is greater than the running build's.
+2. Update `latest_release.json` in the repo root: set `stable.version`,
+   `stable.release` and `stable.date`, and point the `WindowsPortable` package
+   at the new GitHub release asset
+   (`https://github.com/beelzebud/ES-DE-Turbo/releases/download/<tag>/<asset>`)
+   with its MD5.
+3. Tag and publish the release on GitHub. The file at the root of the default
+   branch is what the running application downloads.
+
+The updater can still be disabled entirely, either per-user (`CHECK FOR
+APPLICATION UPDATES` → `NEVER` in the menu, which sets
+`ApplicationUpdaterFrequency` to `never`) or at build time with
+`cmake -DAPPLICATION_UPDATER=off`.
+
 ## Remaining costs and roadmap
 
 On the reference collection the ~9 s (with `--no-preload`) breaks down as:

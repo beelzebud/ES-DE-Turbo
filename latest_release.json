@@ -1,62 +1,20 @@
 {
-    "comment": "Latest release of ES-DE Frontend",
-    "website": "https://es-de.org/",
-    "repository": "https://gitlab.com/es-de/",
+    "comment": "Latest release of ES-DE-Turbo, a performance fork of the ES-DE Frontend",
+    "website": "https://github.com/beelzebud/ES-DE-Turbo",
+    "repository": "https://github.com/beelzebud/ES-DE-Turbo",
     "stable": {
-        "version": "3.4.1",
-        "release": "51",
-        "date": "2026-04-10",
-        "androidVersionName": "3.4.1-58",
-        "androidVersionCode": "58",
-        "androidDate": "2026-04-10",
+        "version": "3.5.0-alpha",
+        "release": "52",
+        "date": "2026-08-15",
+        "androidVersionName": "",
+        "androidVersionCode": "",
+        "androidDate": "",
         "packages": [
             {
                 "name": "WindowsPortable",
-                "filename": "ES-DE_3.4.1-x64_Portable.zip",
-                "url": "https://gitlab.com/es-de/emulationstation-de/-/package_files/288156909/download",
-                "md5": "81381d9a2a003071c3eff200685febbb",
-                "message": ""
-            },
-            {
-                "name": "WindowsInstaller",
-                "filename": "ES-DE_3.4.1-x64.exe",
-                "url": "https://gitlab.com/es-de/emulationstation-de/-/package_files/288156889/download",
-                "md5": "b2efdfc3da7e802e9a77345d329ef5f8",
-                "message": ""
-            },
-            {
-                "name": "macOSApple",
-                "filename": "ES-DE_3.4.1-arm64.dmg",
-                "url": "https://gitlab.com/es-de/emulationstation-de/-/package_files/288889626/download",
-                "md5": "e57ba5b3d7d3aa324db9f28e0550cd26",
-                "message": ""
-            },
-            {
-                "name": "macOSIntel",
-                "filename": "ES-DE_3.4.1-x64.dmg",
-                "url": "https://gitlab.com/es-de/emulationstation-de/-/package_files/288889701/download",
-                "md5": "b3b98dc63317839a50b4af857a4e35be",
-                "message": ""
-            },
-            {
-                "name": "LinuxAppImage",
-                "filename": "ES-DE_x64.AppImage",
-                "url": "https://gitlab.com/es-de/emulationstation-de/-/package_files/288156961/download",
-                "md5": "ea7ea80def78acf08724c100755e4a69",
-                "message": ""
-            },
-            {
-                "name": "LinuxAArch64AppImage",
-                "filename": "ES-DE_aarch64.AppImage",
-                "url": "https://gitlab.com/es-de/emulationstation-de/-/package_files/326321114/download",
-                "md5": "9e459692ebd86dc5f0524f4c2bbad3b3",
-                "message": ""
-            },
-            {
-                "name": "LinuxSteamDeckAppImage",
-                "filename": "ES-DE_x64_SteamDeck.AppImage",
-                "url": "https://gitlab.com/es-de/emulationstation-de/-/package_files/288156987/download",
-                "md5": "b0e32c5d9906072559e7c52febe9fb18",
+                "filename": "ES-DE-Turbo-3.5.0-alpha-x64_Portable.zip",
+                "url": "https://github.com/beelzebud/ES-DE-Turbo/releases/download/v3.5.0-alpha/ES-DE-Turbo-3.5.0-alpha-x64_Portable.zip",
+                "md5": "f1146750b3ab7cf6a1e39bf9cd1ccf92",
                 "message": ""
             }
         ]
@@ -66,56 +24,6 @@
         "version": "",
         "release": "",
         "date": "",
-        "packages": [
-            {
-                "name": "WindowsPortable",
-                "filename": "",
-                "url": "",
-                "md5": "",
-                "message": ""
-            },
-            {
-                "name": "WindowsInstaller",
-                "filename": "",
-                "url": "",
-                "md5": "",
-                "message": ""
-            },
-            {
-                "name": "macOSApple",
-                "filename": "",
-                "url": "",
-                "md5": "",
-                "message": ""
-            },
-            {
-                "name": "macOSIntel",
-                "filename": "",
-                "url": "",
-                "md5": "",
-                "message": ""
-            },
-            {
-                "name": "LinuxAppImage",
-                "filename": "",
-                "url": "",
-                "md5": "",
-                "message": ""
-            },
-            {
-                "name": "LinuxAArch64AppImage",
-                "filename": "",
-                "url": "",
-                "md5": "",
-                "message": ""
-            },
-            {
-                "name": "LinuxSteamDeckAppImage",
-                "filename": "",
-                "url": "",
-                "md5": "",
-                "message": ""
-            }
-        ]
+        "packages": []
     }
 }

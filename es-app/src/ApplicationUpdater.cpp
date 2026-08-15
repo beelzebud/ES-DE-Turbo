@@ -37,8 +37,7 @@ ApplicationUpdater::ApplicationUpdater()
     , mCheckedForUpdate {false}
     , mNewVersion {false}
 {
-    mUrl = "https://gitlab.com/api/v4/projects/18817634/repository/files/latest_release.json/"
-           "raw?ref=master";
+    mUrl = "https://raw.githubusercontent.com/beelzebud/ES-DE-Turbo/main/latest_release.json";
 
 #if defined(_WIN64)
     if (Settings::getInstance()->getBool("PortableMode"))
@@ -441,7 +440,7 @@ void ApplicationUpdater::compareVersions()
                 .append("release is available: ")
 #else
                 .append(releaseType == &mStableRelease ? "stable release" : "prerelease")
-                .append(" is available for download at https://es-de.org: ")
+                .append(" is available for download at https://github.com/beelzebud/ES-DE-Turbo: ")
 #endif
                 .append(releaseType->version)
                 .append(" (r")
@@ -467,7 +466,7 @@ void ApplicationUpdater::compareVersions()
                 mResults.append("\n")
                     .append(_("For more information visit"))
                     .append("\n")
-                    .append("https://es-de.org");
+                    .append("https://github.com/beelzebud/ES-DE-Turbo");
 
             if (mPackage.message != "")
                 mResults.append("\n").append(mPackage.message);

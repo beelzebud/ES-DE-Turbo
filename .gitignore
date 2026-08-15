@@ -132,5 +132,8 @@ CPackSourceConfig.cmake
 .vscode/
 .continueignore
 
+# Release packaging output (large, generated)
+release_pkg/
+
 # Freebuff workspace metadata (not part of the project)
 .freebuff/
