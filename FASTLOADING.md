@@ -171,8 +171,11 @@ existing logic do less redundant work, and do it concurrently.
 ## Building
 
 Builds exactly like upstream ES-DE. Windows requires MSVC (MinGW is no longer
-supported upstream); Linux/macOS use system package-manager dependencies. Full
-instructions are in [INSTALL-DEV.md](INSTALL-DEV.md).
+supported upstream); Linux uses system package-manager dependencies. Full
+instructions are in [INSTALL-DEV.md](INSTALL-DEV.md). macOS is not part of the
+CI pipeline (the upstream dependency scripts still exist under `tools/`, but
+FreeImage 3.18's macOS Makefile hardcodes x86_64 and doesn't link on Apple
+Silicon, so macOS builds are unsupported in this fork for now).
 
 Verified on this tree with MSVC 2022 (toolset 14.44) and Windows 11 SDK
 10.0.26100:
@@ -197,10 +200,10 @@ Notes:
 - Ninja build artifacts are gitignored; the in-source build directory is the
   repository root.
 - A GitHub Actions workflow (`.github/workflows/release.yml`) builds the
-  Windows portable zip, Linux AppImage and macOS DMG, publishes them as a
-  GitHub release, and updates `latest_release.json` automatically whenever a
-  `v*` tag is pushed. In CI the setup script skips the interactive OpenSSL
-  installer, which is not required to build or link.
+  Windows portable zip and Linux AppImage, publishes them as a GitHub release,
+  and updates `latest_release.json` automatically whenever a `v*` tag is
+  pushed. In CI the setup script skips the interactive OpenSSL installer, which
+  is not required to build or link.
 
 ## Application updater
 
@@ -217,10 +220,10 @@ To cut a new release:
    when the feed's release number is greater than the running build's.
 2. Commit and push, then tag the commit `v<version>` (the tag must match
    `PROGRAM_VERSION_STRING`). Pushing the tag triggers the GitHub Actions
-   workflow (`.github/workflows/release.yml`), which builds the Windows zip,
-   Linux AppImage and macOS DMG, publishes them as a GitHub release, and
-   updates `latest_release.json` (version, release, date, filename, url and
-   md5) on the default branch.
+   workflow (`.github/workflows/release.yml`), which builds the Windows zip
+   and Linux AppImage, publishes them as a GitHub release, and updates
+   `latest_release.json` (version, release, date, filename, url and md5) on
+   the default branch.
 
 The file at the root of the default branch is what the running application
 downloads.

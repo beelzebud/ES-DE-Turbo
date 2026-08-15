@@ -120,51 +120,9 @@ jobs:
             ES-DE-Turbo-*.AppImage
             meta-linux.json
 
-  build-macos:
-    name: macOS arm64 DMG
-    runs-on: macos-latest
-    timeout-minutes: 120
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install build tools
-        run: brew install clang-format cmake pkg-config meson nasm yasm
-
-      - name: Set up dependencies
-        run: bash tools/macOS_dependencies_setup.sh
-
-      - name: Build dependencies
-        run: bash tools/macOS_dependencies_build.sh
-
-      - name: Configure and build
-        run: |
-          cmake .
-          make -j"$(sysctl -n hw.ncpu)"
-
-      - name: Package DMG
-        run: cpack
-
-      - name: Rename and record checksum
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          dmg=$(ls ES-DE_*.dmg | head -n1)
-          mv "$dmg" "ES-DE-Turbo-${version}-arm64.dmg"
-          md5=$(md5 -q "ES-DE-Turbo-${version}-arm64.dmg")
-          printf '{"name":"macOSApple","filename":"ES-DE-Turbo-%s-arm64.dmg","md5":"%s"}' \
-            "$version" "$md5" > meta-macos.json
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos
-          path: |
-            ES-DE-Turbo-*.dmg
-            meta-macos.json
-
   publish:
     name: Publish release
-    needs: [build-windows, build-linux, build-macos]
+    needs: [build-windows, build-linux]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -207,7 +165,6 @@ jobs:
           files: |
             artifacts/ES-DE-Turbo-*.zip
             artifacts/ES-DE-Turbo-*.AppImage
-            artifacts/ES-DE-Turbo-*.dmg
             CHECKSUMS.txt
           generate_release_notes: true
 
