@@ -3,8 +3,8 @@
     "website": "https://github.com/beelzebud/ES-DE-Turbo",
     "repository": "https://github.com/beelzebud/ES-DE-Turbo",
     "stable": {
-        "version": "3.5.0-alpha",
-        "release": "52",
+        "version": "3.5.0-alpha-turbo.1",
+        "release": "1000",
         "date": "2026-08-15",
         "androidVersionName": "",
         "androidVersionCode": "",
@@ -13,8 +13,8 @@
             {
                 "name": "WindowsPortable",
                 "filename": "ES-DE-Turbo-3.5.0-alpha-x64_Portable.zip",
-                "url": "https://github.com/beelzebud/ES-DE-Turbo/releases/download/v3.5.0-alpha/ES-DE-Turbo-3.5.0-alpha-x64_Portable.zip",
-                "md5": "f1146750b3ab7cf6a1e39bf9cd1ccf92",
+                "url": "https://github.com/beelzebud/ES-DE-Turbo/releases/download/v3.5.0-alpha-turbo.1/ES-DE-Turbo-3.5.0-alpha-x64_Portable.zip",
+                "md5": "303a46721e2cc216a22ec95eebcea59a",
                 "message": ""
             }
         ]
