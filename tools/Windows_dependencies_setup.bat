@@ -383,15 +383,15 @@ if exist Win64OpenSSL_Light-4_0_0.exe (
   del Win64OpenSSL_Light-4_0_0.exe
 )
 
-if not exist "C:\Program Files\OpenSSL-Win64\libcrypto-4-x64.dll" (
-  curl -O https://slproweb.com/download/Win64OpenSSL_Light-4_0_1.exe
-  :: Run the installer. OpenSSL is not required to build or link, so skip the
-  :: interactive installer in automated (CI) builds.
-  if "%CI%"=="" (
+:: OpenSSL is not required to build or link, so skip the interactive
+:: installer and its download in automated CI builds.
+if "%CI%"=="" (
+  if not exist "C:\Program Files\OpenSSL-Win64\libcrypto-4-x64.dll" (
+    curl -O https://slproweb.com/download/Win64OpenSSL_Light-4_0_1.exe
     .\Win64OpenSSL_Light-4_0_1.exe
-  ) else (
-    echo Skipping the OpenSSL installer as this is an automated build
   )
+) else (
+  echo Skipping the OpenSSL installer as this is an automated build
 )
 
 :: Return to the root of the repository.
