@@ -57,6 +57,7 @@
 #endif
 
 #include <FreeImage.h>
+#include <chrono>
 #include <fstream>
 #include <iostream>
 #include <time.h>
@@ -80,6 +81,7 @@ namespace
     bool createSystemDirectories {false};
     bool settingsNeedSaving {false};
     bool portableMode {false};
+    bool profileLoad {false};
 
     enum loadSystemsReturnCode {
         LOADING_OK,
@@ -354,6 +356,11 @@ bool parseArguments(const std::vector<std::string>& arguments)
         else if (arguments[i] == "--no-splash") {
             Settings::getInstance()->setBool("SplashScreen", false);
         }
+        else if (arguments[i] == "--no-preload") {
+            // Speed fork: skip building the gamelist views during startup. The views are
+            // instead built lazily the first time each system is visited.
+            Settings::getInstance()->setBool("PreloadGamelistViews", false);
+        }
 #if defined(APPLICATION_UPDATER)
         else if (arguments[i] == "--no-update-check") {
             noUpdateCheck = true;
@@ -390,6 +397,9 @@ bool parseArguments(const std::vector<std::string>& arguments)
         else if (arguments[i] == "--create-system-dirs") {
             createSystemDirectories = true;
         }
+        else if (arguments[i] == "--profile-load") {
+            profileLoad = true;
+        }
         else if (arguments[i] == "--debug") {
             Settings::getInstance()->setBool("Debug", true);
             Settings::getInstance()->setBool("DebugFlag", true);
@@ -417,6 +427,8 @@ bool parseArguments(const std::vector<std::string>& arguments)
 "  --anti-aliasing [0, 2 or 4]           Set MSAA anti-aliasing to disabled, 2x or 4x\n"
 #endif
 "  --no-splash                           Don't show the splash screen during startup\n"
+"  --no-preload                          Don't preload gamelist views at startup (faster\n"
+"                                        startup, views build on first visit)\n"
 #if defined(APPLICATION_UPDATER)
 "  --no-update-check                     Don't check for application updates during startup\n"
 #endif
@@ -431,6 +443,7 @@ bool parseArguments(const std::vector<std::string>& arguments)
 "  --create-system-dirs                  Create game system directories\n"
 "  --home [path]                         Directory to use as home path\n"
 "  --debug                               Enable debug mode\n"
+"  --profile-load                        Print startup performance timings\n"
 "  --version, -v                         Display version information\n"
 "  --help, -h                            Summon a sentient, angry tuba\n";
             // clang-format on
@@ -1167,8 +1180,38 @@ int main(int argc, char* argv[])
 
     SystemStatus::getInstance();
     MameNames::getInstance();
+
+    const auto profileThemeStart {std::chrono::steady_clock::now()};
     ThemeData::populateThemes();
+    const double profileThemeMs {std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - profileThemeStart)
+                                     .count()};
+
+    SystemData::sProfileLoad = profileLoad;
+
+    const auto profileSystemsStart {std::chrono::steady_clock::now()};
     loadSystemsReturnCode loadSystemsStatus {loadSystemConfigFile()};
+    const double profileSystemsMs {std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - profileSystemsStart)
+                                       .count()};
+
+    if (profileLoad) {
+        std::cout << "\n--- Startup profile (--profile-load) ---\n";
+        std::cout << "Theme scanning:       " << profileThemeMs << " ms\n";
+        std::cout << "System loading:       " << profileSystemsMs << " ms\n";
+        std::cout << "  Directory scan:     " << SystemData::sProfileScanMs << " ms\n";
+        std::cout << "  Gamelist parsing:   " << SystemData::sProfileGamelistMs << " ms\n";
+        std::cout << "  Sorting:            " << SystemData::sProfileSortMs << " ms\n";
+        std::cout << "  Filter indexing:    " << SystemData::sProfileIndexMs << " ms\n";
+        std::cout << "  Theme loading:      " << SystemData::sProfileThemeMs << " ms\n";
+        LOG(LogInfo) << "Startup profile: themes=" << profileThemeMs
+                     << " ms, systems=" << profileSystemsMs
+                     << " ms (scan=" << SystemData::sProfileScanMs
+                     << ", gamelist=" << SystemData::sProfileGamelistMs
+                     << ", sort=" << SystemData::sProfileSortMs
+                     << ", index=" << SystemData::sProfileIndexMs
+                     << ", theme=" << SystemData::sProfileThemeMs << " ms)";
+    }
 
     if (!SystemData::sStartupExitSignal) {
         if (loadSystemsStatus) {
@@ -1188,7 +1231,20 @@ int main(int argc, char* argv[])
         SDL_GameControllerEventState(SDL_DISABLE);
 
         // Preload system view and all gamelist views.
+        const auto profilePreloadStart {std::chrono::steady_clock::now()};
         ViewController::getInstance()->preload();
+        const double profilePreloadMs {std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - profilePreloadStart)
+                                           .count()};
+
+        if (profileLoad) {
+            const double profileTotalMs {profileThemeMs + profileSystemsMs + profilePreloadMs};
+            std::cout << "View preload:         " << profilePreloadMs << " ms\n";
+            std::cout << "Total (themes+systems+views): " << profileTotalMs << " ms\n";
+            std::cout << "----------------------------------------\n";
+            LOG(LogInfo) << "Startup profile: views=" << profilePreloadMs
+                         << " ms, total=" << profileTotalMs << " ms";
+        }
     }
 
     if (!SystemData::sStartupExitSignal) {

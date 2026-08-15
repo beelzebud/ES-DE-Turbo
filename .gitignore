@@ -79,6 +79,13 @@ Makefile
 install_manifest.txt
 ES-DE.exe.manifest
 
+# Ninja (in-source build)
+build.ninja
+.ninja_deps
+.ninja_log
+rules.ninja
+compile_commands.json
+
 # CPack
 _CPack_Packages
 es-de*.deb

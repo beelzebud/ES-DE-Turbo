@@ -96,9 +96,9 @@ MetaDataList::MetaDataList(MetaDataListType type)
     : mType(type)
     , mWasChanged(false)
 {
-    const std::vector<MetaDataDecl>& mdd {getMDD()};
-    for (auto it = mdd.cbegin(); it != mdd.cend(); ++it)
-        set(it->key, it->defaultValue);
+    // The map is intentionally left empty: defaults are returned lazily by get(). This
+    // avoids allocating one map node per metadata field for every game, which was very
+    // expensive when loading large collections.
 }
 
 MetaDataList MetaDataList::createFromXML(MetaDataListType type,
@@ -118,9 +118,7 @@ MetaDataList MetaDataList::createFromXML(MetaDataListType type,
                 value = Utils::FileSystem::resolveRelativePath(value, relativeTo, true);
             mdl.set(it->key, value);
         }
-        else {
-            mdl.set(it->key, it->defaultValue);
-        }
+        // Absent fields are not stored; get() returns their default value lazily.
     }
     return mdl;
 }
@@ -133,19 +131,19 @@ void MetaDataList::appendToXML(pugi::xml_node& parent,
 
     for (auto it = mdd.cbegin(); it != mdd.cend(); ++it) {
         auto mapIter = mMap.find(it->key);
-        if (mapIter != mMap.cend()) {
-            // We have this value!
-            // If it's just the default (and we ignore defaults), don't write it.
-            if (ignoreDefaults && mapIter->second == it->defaultValue)
-                continue;
+        // Stored value, or the field default when the field was never explicitly set.
+        const std::string& value {mapIter != mMap.cend() ? mapIter->second : it->defaultValue};
 
-            // Try and make paths relative if we can.
-            std::string value {mapIter->second};
-            if (it->type == MD_PATH)
-                value = Utils::FileSystem::createRelativePath(value, relativeTo, true);
+        // If it's just the default (and we ignore defaults), don't write it.
+        if (ignoreDefaults && value == it->defaultValue)
+            continue;
 
-            parent.append_child(mapIter->first.c_str()).text().set(value.c_str());
-        }
+        // Try and make paths relative if we can.
+        std::string valueCopy {value};
+        if (it->type == MD_PATH)
+            valueCopy = Utils::FileSystem::createRelativePath(valueCopy, relativeTo, true);
+
+        parent.append_child(it->key.c_str()).text().set(valueCopy.c_str());
     }
 }
 
@@ -157,11 +155,20 @@ void MetaDataList::set(const std::string& key, const std::string& value)
 
 const std::string& MetaDataList::get(const std::string& key) const
 {
-    // Check that the key actually exists, otherwise return an empty string.
-    if (mMap.count(key) > 0)
-        return mMap.at(key);
-    else
-        return mNoResult;
+    const auto it {mMap.find(key)};
+    if (it != mMap.cend())
+        return it->second;
+
+    // The field was never explicitly set, so fall back to its declared default value.
+    // (Absent fields are not stored in the map to keep per-game construction cheap.)
+    const std::vector<MetaDataDecl>& mdd {getMDD()};
+    for (auto decl = mdd.cbegin(); decl != mdd.cend(); ++decl) {
+        if (decl->key == key)
+            return decl->defaultValue;
+    }
+
+    // Key doesn't exist at all, return an empty string.
+    return mNoResult;
 }
 
 int MetaDataList::getInt(const std::string& key) const

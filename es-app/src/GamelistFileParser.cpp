@@ -17,14 +17,45 @@
 
 #include <pugixml.hpp>
 
+#include <chrono>
+
 namespace GamelistFileParser
 {
+    // Stat-free variant of Utils::FileSystem::resolveRelativePath() that takes the already
+    // resolved base directory. The original function stats the relativeTo path for every
+    // call, which was extremely expensive when parsing gamelists with tens of thousands
+    // of entries on slow storage.
+    std::string resolveRelativePathFast(const std::string& path,
+                                        const std::string& relativeToVar,
+                                        const bool allowHome)
+    {
+        const std::string genericPath {Utils::FileSystem::getGenericPath(path)};
+
+        // Nothing to resolve.
+        if (genericPath.length() == 0)
+            return genericPath;
+
+        // Replace '.' with relativeToVar.
+        if ((genericPath[0] == '.') && (genericPath[1] == '/'))
+            return (relativeToVar + &(genericPath[1]));
+
+        // Replace '~' with homePath.
+        if (allowHome && (genericPath[0] == '~') && (genericPath[1] == '/'))
+            return (Utils::FileSystem::getHomePath() + &(genericPath[1]));
+
+        // Nothing to resolve.
+        return genericPath;
+    }
+
     FileData* findOrCreateFile(SystemData* system, const std::string& path, FileType type)
     {
         // First, verify that path is within the system's root folder.
         FileData* root {system->getRootFolder()};
         bool contains {false};
-        std::string relative {Utils::FileSystem::removeCommonPath(path, root->getPath(), contains)};
+        // The root folder is always a directory, so use the stat-free variant of
+        // removeCommonPath() to avoid a filesystem syscall for every gamelist entry.
+        std::string relative {
+            Utils::FileSystem::removeCommonPath(path, root->getPath(), contains, true)};
 
         if (!contains) {
             LOG(LogError) << "Path \"" << path << "\" is outside system path \""
@@ -55,9 +86,10 @@ namespace GamelistFileParser
                 treeNode->getChildrenByFilename()};
 
             const std::string key {*path_it};
-            found = children.find(key) != children.cend();
+            auto childIt {children.find(key)};
+            found = childIt != children.cend();
             if (found)
-                treeNode = children.at(key);
+                treeNode = childIt->second;
 
             if (treeNode->getNoLoad())
                 return treeNode;
@@ -226,7 +258,15 @@ namespace GamelistFileParser
         }
 
         const std::string& relativeTo {system->getStartPath()};
+        // Resolve the base directory once per system instead of stat'ing the start path
+        // for every single entry in the gamelist.
+        const std::string relativeToVar {
+            Utils::FileSystem::isDirectory(relativeTo) ? Utils::FileSystem::getGenericPath(relativeTo) :
+                                                         Utils::FileSystem::getParent(relativeTo)};
         const bool showHiddenFiles {Settings::getInstance()->getBool("ShowHiddenFiles")};
+
+        const auto parseStart {std::chrono::steady_clock::now()};
+        unsigned int entryCount {0};
 
         const std::vector<std::string> tagList {"game", "folder"};
         const FileType typeList[2] = {GAME, FOLDER};
@@ -236,8 +276,10 @@ namespace GamelistFileParser
             FileType type {typeList[i]};
             for (pugi::xml_node fileNode {root.child(tag.c_str())}; fileNode;
                  fileNode = fileNode.next_sibling(tag.c_str())) {
-                const std::string& path {Utils::FileSystem::resolveRelativePath(
-                    fileNode.child("path").text().get(), relativeTo, false)};
+                ++entryCount;
+                const std::string path {
+                    resolveRelativePathFast(fileNode.child("path").text().get(), relativeToVar,
+                                            false)};
 
                 if (!trustGamelist && !Utils::FileSystem::exists(path)) {
 #if defined(_WIN64)
@@ -251,8 +293,9 @@ namespace GamelistFileParser
                 }
 
                 // Skip hidden files, check both the file itself and the directory in which
-                // it is located.
-                if (!showHiddenFiles &&
+                // it is located. In gamelist-only mode these filesystem checks are skipped
+                // entirely as the gamelist is trusted to describe the collection.
+                if (!trustGamelist && !showHiddenFiles &&
                     (Utils::FileSystem::isHidden(path) ||
                      Utils::FileSystem::isHidden(Utils::FileSystem::getParent(path)))) {
                     LOG(LogDebug) << "GamelistFileParser::parseGamelist(): Skipping hidden file \""
@@ -338,6 +381,13 @@ namespace GamelistFileParser
                     delete child;
             }
         }
+
+        const auto parseEnd {std::chrono::steady_clock::now()};
+        const double elapsedMs {
+            std::chrono::duration<double, std::milli>(parseEnd - parseStart).count()};
+        LOG(LogInfo) << "GamelistFileParser::parseGamelist(): Parsed " << entryCount
+                     << " entries for system \"" << system->getName() << "\" in " << elapsedMs
+                     << " ms";
     }
 
     void addFileDataNode(pugi::xml_node& parent,

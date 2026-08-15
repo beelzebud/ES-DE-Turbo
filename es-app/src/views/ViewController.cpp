@@ -37,6 +37,8 @@
 #include "views/GamelistView.h"
 #include "views/SystemView.h"
 
+#include <chrono>
+
 #if defined(__ANDROID__)
 #include "utils/PlatformUtilAndroid.h"
 #endif
@@ -1390,9 +1392,19 @@ void ViewController::preload()
 {
     const unsigned int systemCount {static_cast<unsigned int>(SystemData::sSystemVector.size())};
     // This reduces the amount of texture pop-in when loading theme extras.
-    if (!SystemData::sSystemVector.empty())
+    if (!SystemData::sSystemVector.empty()) {
+        const auto sysStart {std::chrono::steady_clock::now()};
         getSystemListView();
+        const auto sysEnd {std::chrono::steady_clock::now()};
+        LOG(LogInfo) << "ViewController::preload(): System view built in "
+                     << std::chrono::duration<double, std::milli>(sysEnd - sysStart).count()
+                     << " ms";
+    }
 
+    // Speed fork: when disabled, the gamelist views are built lazily on first visit
+    // instead of during startup. This saves several seconds on large collections at
+    // the cost of some texture pop-in when entering a system for the first time.
+    const bool preloadViews {Settings::getInstance()->getBool("PreloadGamelistViews")};
     const bool splashScreen {Settings::getInstance()->getBool("SplashScreen")};
     float loadedSystems {0.0f};
     unsigned int lastTime {0};
@@ -1436,8 +1448,17 @@ void ViewController::preload()
                 lastTime += SDL_GetTicks() - curTime;
             }
         }
-        (*it)->getIndex()->resetFilters();
-        getGamelistView(*it)->preloadGamelist();
+        if (preloadViews) {
+            const auto preloadStart {std::chrono::steady_clock::now()};
+            (*it)->getIndex()->resetFilters();
+            getGamelistView(*it)->preloadGamelist();
+            const auto preloadEnd {std::chrono::steady_clock::now()};
+            LOG(LogInfo) << "ViewController::preload(): View for system \"" << (*it)->getName()
+                         << "\" built in "
+                         << std::chrono::duration<double, std::milli>(preloadEnd - preloadStart)
+                                .count()
+                         << " ms";
+        }
     }
 
     if (splashScreen && SystemData::sSystemVector.size() > 0)

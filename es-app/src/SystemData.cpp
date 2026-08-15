@@ -30,9 +30,59 @@
 #include <SDL2/SDL_events.h>
 #include <SDL2/SDL_timer.h>
 
+#include <atomic>
+#include <chrono>
 #include <fstream>
 #include <pugixml.hpp>
 #include <random>
+#include <set>
+#include <thread>
+
+namespace
+{
+    // Startup profiling support. When SystemData::sProfileLoad is enabled these timers
+    // accumulate wall-clock time per loading phase so that startup time can be reported
+    // as a breakdown rather than a single opaque number.
+    using ProfileClock = std::chrono::steady_clock;
+
+    class ProfileScope
+    {
+    public:
+        ProfileScope(double& accumulator)
+            : mAccumulator {accumulator}
+            , mEnabled {SystemData::sProfileLoad}
+        {
+            if (mEnabled)
+                mStart = ProfileClock::now();
+        }
+
+        ~ProfileScope()
+        {
+            if (mEnabled) {
+                mAccumulator += std::chrono::duration<double, std::milli>(
+                                    ProfileClock::now() - mStart)
+                                    .count();
+            }
+        }
+
+    private:
+        double& mAccumulator;
+        bool mEnabled;
+        ProfileClock::time_point mStart {};
+    };
+
+    // Everything needed to construct a SystemData for a single parsed es_systems.xml entry.
+    // Populating the systems can then be done in parallel while theme loading stays on the
+    // main thread.
+    struct SystemLoadSpec {
+        std::string name;
+        std::string fullname;
+        std::string sortName;
+        std::string themeFolder;
+        SystemEnvironmentData* envData;
+    };
+
+} // namespace
 
 FindRules::FindRules()
 {
@@ -534,7 +584,8 @@ SystemData::SystemData(const std::string& name,
                        SystemEnvironmentData* envData,
                        const std::string& themeFolder,
                        bool CollectionSystem,
-                       bool CustomCollectionSystem)
+                       bool CustomCollectionSystem,
+                       bool deferThemeLoad)
     : mName {name}
     , mFullName {fullName}
     , mSortName {sortName}
@@ -560,19 +611,29 @@ SystemData::SystemData(const std::string& name,
         if (!Settings::getInstance()->getBool("ParseGamelistOnly")) {
             // If there was an error populating the folder or if there were no games found,
             // then don't continue with any additional process steps for this system.
+            ProfileScope scanScope {SystemData::sProfileScanMs};
             if (!populateFolder(mRootFolder))
                 return;
         }
 
-        if (!Settings::getInstance()->getBool("IgnoreGamelist"))
+        if (!Settings::getInstance()->getBool("IgnoreGamelist")) {
+            ProfileScope gamelistScope {SystemData::sProfileGamelistMs};
             GamelistFileParser::parseGamelist(this);
+        }
 
         setupSystemSortType(mRootFolder);
 
-        mRootFolder->sort(mRootFolder->getSortTypeFromString(mRootFolder->getSortTypeString()),
-                          Settings::getInstance()->getBool("FavoritesFirst"));
+        {
+            ProfileScope sortScope {SystemData::sProfileSortMs};
+            mRootFolder->sort(
+                mRootFolder->getSortTypeFromString(mRootFolder->getSortTypeString()),
+                Settings::getInstance()->getBool("FavoritesFirst"));
+        }
 
-        indexAllGameFilters(mRootFolder);
+        {
+            ProfileScope indexScope {SystemData::sProfileIndexMs};
+            indexAllGameFilters(mRootFolder);
+        }
     }
     else {
         // Virtual systems are updated afterwards by CollectionSystemsManager.
@@ -586,7 +647,12 @@ SystemData::SystemData(const std::string& name,
         new FileData(PLACEHOLDER, "<" + _("No Entries Found") + ">", getSystemEnvData(), this);
 
     setIsGameSystemStatus();
-    loadTheme(ThemeTriggers::TriggerType::NONE);
+    // Theme loading mutates shared ResourceManager state, so when systems are populated
+    // in parallel it is deferred and done on the main thread afterwards.
+    if (!deferThemeLoad) {
+        ProfileScope themeScope {SystemData::sProfileThemeMs};
+        loadTheme(ThemeTriggers::TriggerType::NONE);
+    }
 }
 
 SystemData::~SystemData()
@@ -824,6 +890,14 @@ std::vector<std::string> readList(const std::string& str, const std::string& del
 
 bool SystemData::loadConfig()
 {
+    if (sProfileLoad) {
+        sProfileScanMs = 0.0;
+        sProfileGamelistMs = 0.0;
+        sProfileSortMs = 0.0;
+        sProfileIndexMs = 0.0;
+        sProfileThemeMs = 0.0;
+    }
+
     deleteSystems();
 
     if (sFindRules.get() == nullptr)
@@ -846,6 +920,10 @@ bool SystemData::loadConfig()
     float systemCount {0.0f};
     float parsedSystems {0.0f};
     unsigned int gameCount {0};
+
+    // Parsed system entries, populated below in a first pass and then built in parallel.
+    std::vector<SystemLoadSpec> specs;
+    std::set<std::string> seenSystemNames;
 
     // This is only done to get the total system count, for calculating the progress bar position.
     for (auto& configPath : configPaths) {
@@ -973,20 +1051,12 @@ bool SystemData::loadConfig()
                 }
             }
 
-            auto nameFindFunc = [&] {
-                for (auto system : sSystemVector) {
-                    if (system->mName == name) {
-                        LOG(LogDebug) << "A system with the name \"" << name
-                                      << "\" has already been loaded, skipping duplicate entry";
-                        return true;
-                    }
-                }
-                return false;
-            };
-
             // If the name is matching a system that has already been loaded, then skip the entry.
-            if (nameFindFunc())
+            if (seenSystemNames.count(name) != 0) {
+                LOG(LogDebug) << "A system with the name \"" << name
+                              << "\" has already been loaded, skipping duplicate entry";
                 continue;
+            }
 
             // If there is a %ROMPATH% variable set for the system, expand it. By doing this
             // it's possible to use either absolute ROM paths in es_systems.xml or to utilize
@@ -1155,33 +1225,123 @@ bool SystemData::loadConfig()
             envData->mLaunchCommands = commands;
             envData->mPlatformIds = platformIds;
 
-            SystemData* newSys {new SystemData(name, fullname, sortName, envData, themeFolder)};
-            bool onlyHidden {false};
+            seenSystemNames.insert(name);
+            specs.emplace_back(SystemLoadSpec {name, fullname, sortName, themeFolder, envData});
+        }
+    }
 
-            // If the option to show hidden games has been disabled, then check whether all
-            // games for the system are hidden. That will flag the system as empty.
-            if (!Settings::getInstance()->getBool("ShowHiddenGames")) {
-                std::vector<FileData*> recursiveGames {
-                    newSys->getRootFolder()->getChildrenRecursive()};
-                onlyHidden = true;
-                for (auto it = recursiveGames.cbegin(); it != recursiveGames.cend(); ++it) {
-                    if ((*it)->getType() != FOLDER) {
-                        onlyHidden = (*it)->getHidden();
-                        if (!onlyHidden)
-                            break;
-                    }
+    // Populate the parsed systems in parallel. Each system is independent and the heavy work
+    // is directory scanning, gamelist XML parsing and sorting. Theme loading is deferred to
+    // the main thread below as it mutates shared ResourceManager state.
+    const size_t specCount {specs.size()};
+    std::vector<SystemData*> newSystems(specCount, nullptr);
+
+    if (specCount > 0) {
+        const unsigned int hardwareThreads {std::thread::hardware_concurrency()};
+        const unsigned int threadCount {
+            hardwareThreads > 0 ?
+                std::min(hardwareThreads, static_cast<unsigned int>(specCount)) :
+                1};
+
+        std::atomic<unsigned int> completedCount {0};
+        std::vector<std::thread> threads;
+        threads.reserve(threadCount);
+
+        for (unsigned int t {0}; t < threadCount; ++t) {
+            const size_t begin {specCount * t / threadCount};
+            const size_t end {specCount * (t + 1) / threadCount};
+            threads.emplace_back([&specs, &newSystems, begin, end, &completedCount] {
+                for (size_t i {begin}; i < end; ++i) {
+                    const SystemLoadSpec& spec {specs[i]};
+                    newSystems[i] = new SystemData(spec.name, spec.fullname, spec.sortName,
+                                                   spec.envData, spec.themeFolder, false, false,
+                                                   true);
+                }
+                ++completedCount;
+            });
+        }
+
+        // Keep the event loop and splash screen responsive while the workers are running.
+        unsigned int lastTime {0};
+        unsigned int accumulator {0};
+        SDL_Event event {};
+        while (completedCount < threadCount) {
+            while (SDL_PollEvent(&event)) {
+                InputManager::getInstance().parseEvent(event);
+                if (event.type == SDL_QUIT) {
+                    sStartupExitSignal = true;
+                    break;
+                }
+#if defined(__ANDROID__)
+                if (event.type == SDL_WINDOWEVENT &&
+                    event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
+                    ViewController::getInstance()->setWindowSizeChanged(
+                        static_cast<int>(event.window.data1), static_cast<int>(event.window.data2));
+                }
+#endif
+            }
+            if (sStartupExitSignal)
+                break;
+
+            if (splashScreen) {
+                const unsigned int curTime {SDL_GetTicks()};
+                accumulator += curTime - lastTime;
+                lastTime = curTime;
+                if (accumulator > 40) {
+                    accumulator = 0;
+                    Window::getInstance()->renderSplashScreen(Window::SplashScreenState::SCANNING,
+                                                              0.5f);
                 }
             }
 
-            if (newSys->getRootFolder()->getChildrenByFilename().size() == 0 || onlyHidden) {
-                LOG(LogDebug) << "SystemData::loadConfig(): Skipping system \"" << name
-                              << "\" as no files matched any of the defined file extensions";
-                delete newSys;
+            SDL_Delay(5);
+        }
+
+        for (auto& thread : threads)
+            thread.join();
+
+        if (sStartupExitSignal) {
+            for (auto& system : newSystems)
+                delete system;
+            return true;
+        }
+    }
+
+    // Theme loading and finalization happen on the main thread.
+    for (size_t i {0}; i < specCount; ++i) {
+        SystemData* newSys {newSystems[i]};
+        const SystemLoadSpec& spec {specs[i]};
+
+        {
+            ProfileScope themeScope {SystemData::sProfileThemeMs};
+            newSys->loadTheme(ThemeTriggers::TriggerType::NONE);
+        }
+
+        bool onlyHidden {false};
+
+        // If the option to show hidden games has been disabled, then check whether all
+        // games for the system are hidden. That will flag the system as empty.
+        if (!Settings::getInstance()->getBool("ShowHiddenGames")) {
+            std::vector<FileData*> recursiveGames {
+                newSys->getRootFolder()->getChildrenRecursive()};
+            onlyHidden = true;
+            for (auto it = recursiveGames.cbegin(); it != recursiveGames.cend(); ++it) {
+                if ((*it)->getType() != FOLDER) {
+                    onlyHidden = (*it)->getHidden();
+                    if (!onlyHidden)
+                        break;
+                }
             }
-            else {
-                sSystemVector.emplace_back(newSys);
-                gameCount += newSys->getRootFolder()->getGameCount().first;
-            }
+        }
+
+        if (newSys->getRootFolder()->getChildrenByFilename().size() == 0 || onlyHidden) {
+            LOG(LogDebug) << "SystemData::loadConfig(): Skipping system \"" << spec.name
+                          << "\" as no files matched any of the defined file extensions";
+            delete newSys;
+        }
+        else {
+            sSystemVector.emplace_back(newSys);
+            gameCount += newSys->getRootFolder()->getGameCount().first;
         }
     }
 

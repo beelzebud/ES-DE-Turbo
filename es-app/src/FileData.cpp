@@ -53,17 +53,24 @@ FileData::FileData(FileType type,
     , mNoLoad {false}
 {
     // Metadata needs at least a name field (since that's what getName() will return).
+    // The display name is computed with the stat-free getStem() variant: the directory
+    // status is derived from the FileData type, so no filesystem syscall is needed here.
+    // The old code called getStem() (which stats every path) for every game, which was
+    // very expensive when parsing large gamelists on slow storage.
     if ((system->hasPlatformId(PlatformIds::ARCADE) ||
          system->hasPlatformId(PlatformIds::SNK_NEO_GEO)) &&
         metadata.getType() != FOLDER_METADATA) {
         // If it's a MAME or Neo Geo game, expand the game name accordingly.
-        metadata.set("name", MameNames::getInstance().getCleanName(getCleanName()));
+        const std::string displayName {Utils::FileSystem::getStem(mPath, false)};
+        metadata.set("name", MameNames::getInstance().getCleanName(
+                                 Utils::String::removeParenthesis(displayName)));
     }
     else {
         if (metadata.getType() == FOLDER_METADATA && Utils::FileSystem::isHidden(mPath))
             metadata.set("name", Utils::FileSystem::getFileName(mPath));
         else
-            metadata.set("name", getDisplayName());
+            metadata.set("name",
+                         Utils::FileSystem::getStem(mPath, metadata.getType() == FOLDER_METADATA));
     }
 
     mSystemName = system->getName();
@@ -600,7 +607,8 @@ std::vector<FileData*> FileData::getScrapeFilesRecursive(bool includeFolders,
 
 const bool FileData::isArcadeAsset() const
 {
-    const std::string& stem {Utils::FileSystem::getStem(mPath)};
+    // Stat-free getStem() variant: the directory status is known from the FileData type.
+    const std::string stem {Utils::FileSystem::getStem(mPath, mType == FOLDER)};
     return ((mSystem && (mSystem->hasPlatformId(PlatformIds::ARCADE) ||
                          mSystem->hasPlatformId(PlatformIds::SNK_NEO_GEO))) &&
             (MameNames::getInstance().isBios(stem) || MameNames::getInstance().isDevice(stem)));
@@ -608,7 +616,7 @@ const bool FileData::isArcadeAsset() const
 
 const bool FileData::isArcadeGame() const
 {
-    const std::string& stem {Utils::FileSystem::getStem(mPath)};
+    const std::string stem {Utils::FileSystem::getStem(mPath, mType == FOLDER)};
     return ((mSystem && (mSystem->hasPlatformId(PlatformIds::ARCADE) ||
                          mSystem->hasPlatformId(PlatformIds::SNK_NEO_GEO))) &&
             (!MameNames::getInstance().isBios(stem) && !MameNames::getInstance().isDevice(stem)));

@@ -62,6 +62,10 @@ namespace Utils
         std::string getParent(const std::string& path);
         std::string getFileName(const std::string& path);
         std::string getStem(const std::string& path);
+        // Stat-free variant: the caller supplies the directory status so no filesystem
+        // syscall is required. This is used on hot paths (e.g. gamelist parsing) where the
+        // file/folder type is already known, as getStem() otherwise stats every path.
+        std::string getStem(const std::string& path, const bool isDirectory);
         std::string getExtension(const std::string& path);
         long getFileSize(const std::filesystem::path& path);
         std::string expandHomePath(const std::string& path, const bool systemHome = false);
@@ -74,6 +78,12 @@ namespace Utils
         std::string removeCommonPath(const std::string& path,
                                      const std::string& commonArg,
                                      bool& contains);
+        // Stat-free variant: the caller supplies whether the common path is a directory so
+        // no filesystem syscall is required. Used on hot paths where the type is known.
+        std::string removeCommonPath(const std::string& path,
+                                     const std::string& commonArg,
+                                     bool& contains,
+                                     const bool commonIsDirectory);
         std::string resolveSymlink(const std::string& path);
         bool copyFile(const std::string& sourcePath,
                       const std::string& destinationPath,

@@ -9,6 +9,8 @@
 
 project(es-de)
 
+find_package(Threads REQUIRED)
+
 set(ES_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ApplicationUpdater.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/CollectionSystemsManager.h
@@ -137,7 +139,7 @@ elseif(APPLE)
 elseif(WIN32)
     include_directories(${COMMON_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR}/src)
     add_executable(ES-DE WIN32 ${ES_SOURCES} ${ES_HEADERS})
-    target_link_libraries(ES-DE ${COMMON_LIBRARIES} es-core lunasvg::lunasvg)
+    target_link_libraries(ES-DE ${COMMON_LIBRARIES} es-core lunasvg::lunasvg Threads::Threads)
     set_target_properties(ES-DE PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
 elseif(ANDROID)
     include_directories(${COMMON_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -147,7 +149,8 @@ elseif(ANDROID)
 else()
     include_directories(${COMMON_INCLUDE_DIRS} ${CMAKE_CURRENT_SOURCE_DIR}/src)
     add_executable(es-de ${ES_SOURCES} ${ES_HEADERS})
-    target_link_libraries(es-de ${COMMON_LIBRARIES} ${CMAKE_DL_LIBS} es-core lunasvg::lunasvg)
+    target_link_libraries(es-de ${COMMON_LIBRARIES} ${CMAKE_DL_LIBS} es-core lunasvg::lunasvg
+                          Threads::Threads)
     set_target_properties(es-de PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
 endif()
 

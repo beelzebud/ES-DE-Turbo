@@ -116,7 +116,8 @@ public:
                SystemEnvironmentData* envData,
                const std::string& themeFolder,
                bool CollectionSystem = false,
-               bool CustomCollectionSystem = false);
+               bool CustomCollectionSystem = false,
+               bool deferThemeLoad = false);
 
     ~SystemData();
 
@@ -170,6 +171,14 @@ public:
     static inline std::unique_ptr<FindRules> sFindRules;
     static inline std::unique_ptr<ImportRules> sImportRules;
     static inline bool sStartupExitSignal {false};
+
+    // Startup profiling accumulators, enabled via the --profile-load command line option.
+    static inline bool sProfileLoad {false};
+    static inline double sProfileScanMs {0.0};
+    static inline double sProfileGamelistMs {0.0};
+    static inline double sProfileSortMs {0.0};
+    static inline double sProfileIndexMs {0.0};
+    static inline double sProfileThemeMs {0.0};
 
     const bool isCollection() const { return mIsCollectionSystem; }
     const bool isCustomCollection() const { return mIsCustomCollectionSystem; }

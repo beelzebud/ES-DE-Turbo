@@ -367,6 +367,10 @@ void Settings::setDefaults()
 
     mBoolMap["DebugSkipInputLogging"] = {false, false};
     mBoolMap["DebugSkipMissingThemeFiles"] = {false, false};
+
+    // Speed fork: skip building gamelist views during startup, deferring to first visit.
+    // Disable with --no-preload or by setting this to false in es_settings.xml.
+    mBoolMap["PreloadGamelistViews"] = {true, true};
     mBoolMap["DebugSkipMissingThemeFilesCustomCollections"] = {true, true};
     mBoolMap["LegacyGamelistFileLocation"] = {false, false};
     mBoolMap["CreatePlaceholderSystemDirectories"] = {false, false};

@@ -661,6 +661,11 @@ namespace Utils
 
         std::string getStem(const std::string& path)
         {
+            return getStem(path, Utils::FileSystem::isDirectory(path));
+        }
+
+        std::string getStem(const std::string& path, const bool isDir)
+        {
             std::string fileName {getFileName(path)};
             size_t offset {std::string::npos};
 
@@ -668,7 +673,7 @@ namespace Utils
             if (fileName == ".")
                 return fileName;
 
-            if (!Utils::FileSystem::isDirectory(path)) {
+            if (!isDir) {
                 // Find last '.' and erase the extension.
                 if ((offset = fileName.find_last_of('.')) != std::string::npos)
                     return fileName.erase(offset);
@@ -772,9 +777,18 @@ namespace Utils
                                      const std::string& commonArg,
                                      bool& contains)
         {
+            return removeCommonPath(path, commonArg, contains,
+                                    Utils::FileSystem::isDirectory(commonArg));
+        }
+
+        std::string removeCommonPath(const std::string& path,
+                                     const std::string& commonArg,
+                                     bool& contains,
+                                     const bool commonIsDirectory)
+        {
             const std::string& genericPath {getGenericPath(path)};
-            const std::string& common {isDirectory(commonArg) ? getGenericPath(commonArg) :
-                                                                getParent(commonArg)};
+            const std::string& common {commonIsDirectory ? getGenericPath(commonArg) :
+                                                           getParent(commonArg)};
 
             if (genericPath.find(common) == 0) {
                 contains = true;
