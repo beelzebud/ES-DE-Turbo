@@ -143,7 +143,7 @@ if exist glew-2.3.1-win32.zip (
   del glew-2.3.1-win32.zip
 )
 
-curl -LO https://downloads.sourceforge.net/project/glew/glew/2.3.1/glew-2.3.1-win32.zip
+curl -fL --retry 5 --retry-delay 3 --retry-all-errors -O https://downloads.sourceforge.net/project/glew/glew/2.3.1/glew-2.3.1-win32.zip
 7z x glew-2.3.1-win32.zip
 
 if not exist glew-2.3.1\ (
@@ -208,7 +208,7 @@ if exist FreeImage3180Win32Win64.zip (
   del FreeImage3180Win32Win64.zip
 )
 
-curl -LO https://downloads.sourceforge.net/project/freeimage/Binary%%20Distribution/3.18.0/FreeImage3180Win32Win64.zip
+curl -fL --retry 5 --retry-delay 3 --retry-all-errors -O https://downloads.sourceforge.net/project/freeimage/Binary%%20Distribution/3.18.0/FreeImage3180Win32Win64.zip
 7z x FreeImage3180Win32Win64.zip
 
 if not exist FreeImage\ (

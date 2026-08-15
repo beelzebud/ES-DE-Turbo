@@ -24,7 +24,7 @@ mkdir local_install
 echo
 echo "Setting up libiconv"
 rm -rf libiconv*
-curl -LO https://ftpmirror.gnu.org/libiconv/libiconv-1.19.tar.gz
+curl -fL --retry 5 --retry-delay 3 --retry-all-errors -O https://ftp.gnu.org/gnu/libiconv/libiconv-1.19.tar.gz
 tar xvzf libiconv-1.19.tar.gz
 
 if [ ! -d libiconv-1.19 ]; then
@@ -38,7 +38,7 @@ rm libiconv-1.19.tar.gz
 echo
 echo "Setting up gettext"
 rm -rf gettext*
-curl -LO https://ftpmirror.gnu.org/gettext/gettext-1.0.tar.gz
+curl -fL --retry 5 --retry-delay 3 --retry-all-errors -O https://ftp.gnu.org/gnu/gettext/gettext-1.0.tar.gz
 tar xvzf gettext-1.0.tar.gz
 
 if [ ! -d gettext-1.0 ]; then
@@ -196,7 +196,7 @@ echo "Setting up FreeImage"
 rm -rf freeimage
 mkdir freeimage
 cd freeimage
-curl -LO https://downloads.sourceforge.net/project/freeimage/Source%20Distribution/3.18.0/FreeImage3180.zip
+curl -fL --retry 5 --retry-delay 3 --retry-all-errors -O https://downloads.sourceforge.net/project/freeimage/Source%20Distribution/3.18.0/FreeImage3180.zip
 unzip FreeImage3180.zip
 
 if [ ! -d FreeImage ]; then
