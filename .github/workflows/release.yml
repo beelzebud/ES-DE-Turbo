@@ -10,25 +10,13 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build Windows portable release
+  build-windows:
+    name: Windows x64 portable zip
     runs-on: windows-2022
     timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Validate tag matches version
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: pwsh
-        run: |
-          $tagVersion = $env:GITHUB_REF_NAME -replace '^v', ''
-          $headerVersion = (Select-String -Path 'es-core/src/ApplicationVersion.h' -Pattern '#define\s+PROGRAM_VERSION_STRING\s+"([^"]+)"').Matches[0].Groups[1].Value
-          if ($tagVersion -ne $headerVersion) {
-            Write-Error "Tag '$tagVersion' does not match PROGRAM_VERSION_STRING '$headerVersion'"
-            exit 1
-          }
-          Write-Output "Tag version '$tagVersion' matches PROGRAM_VERSION_STRING"
 
       - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@v1
@@ -78,71 +66,199 @@ jobs:
 
           7z a -tzip -mx=7 $zip $staging
 
-          $sha = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLower()
           $md5 = (Get-FileHash -Path $zip -Algorithm MD5).Hash.ToLower()
-          $bytes = (Get-Item -Path $zip).Length
-          $lines = @(
-            "ES-DE-Turbo $version (Windows x64, Portable)",
-            "",
-            "File:  $zip",
-            "Size:  $bytes bytes",
-            "",
-            "SHA256:  $sha",
-            "MD5:     $md5"
-          )
-          $lines | Out-File -Encoding ascii -FilePath 'CHECKSUMS.txt'
+          @{ name = 'WindowsPortable'; filename = $zip; md5 = $md5 } |
+            ConvertTo-Json | Set-Content -Path 'meta-windows.json'
 
-          $releaseNum = (Select-String -Path 'es-core/src/ApplicationVersion.h' -Pattern '#define\s+PROGRAM_RELEASE_NUMBER\s+(\d+)').Matches[0].Groups[1].Value
-          $releaseDate = (Get-Date -Format 'yyyy-MM-dd')
-          @(
-            "VERSION=$version",
-            "ZIP_FILENAME=$zip",
-            "ZIP_MD5=$md5",
-            "RELEASE_NUM=$releaseNum",
-            "RELEASE_DATE=$releaseDate"
-          ) | ForEach-Object { Add-Content -Path $env:GITHUB_ENV -Value $_ }
+          Write-Output "Built $zip"
 
-          Write-Output "Built $zip ($bytes bytes)"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            ES-DE-Turbo-*.zip
+            meta-windows.json
+
+  build-linux:
+    name: Linux x64 AppImage
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential clang-format git cmake gettext \
+            libharfbuzz-dev libicu-dev libsdl2-dev \
+            libavcodec-dev libavfilter-dev libavformat-dev libavutil-dev \
+            libfreeimage-dev libfreetype6-dev libgit2-dev libcurl4-openssl-dev \
+            libpugixml-dev libasound2-dev libbluetooth-dev libgl1-mesa-dev \
+            libpoppler-cpp-dev libpipewire-0.3-dev libfuse2
+
+      - name: Build AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: bash tools/create_AppImage.sh
+
+      - name: Rename and record checksum
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          mv ES-DE_x64.AppImage "ES-DE-Turbo-${version}-x64.AppImage"
+          md5=$(md5sum "ES-DE-Turbo-${version}-x64.AppImage" | awk '{print $1}')
+          printf '{"name":"LinuxAppImage","filename":"ES-DE-Turbo-%s-x64.AppImage","md5":"%s"}' \
+            "$version" "$md5" > meta-linux.json
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: |
+            ES-DE-Turbo-*.AppImage
+            meta-linux.json
+
+  build-macos:
+    name: macOS arm64 DMG
+    runs-on: macos-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: brew install clang-format cmake pkg-config meson nasm yasm
+
+      - name: Set up dependencies
+        run: bash tools/macOS_dependencies_setup.sh
+
+      - name: Build dependencies
+        run: bash tools/macOS_dependencies_build.sh
+
+      - name: Configure and build
+        run: |
+          cmake .
+          make -j"$(sysctl -n hw.ncpu)"
+
+      - name: Package DMG
+        run: cpack
+
+      - name: Rename and record checksum
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          dmg=$(ls ES-DE_*.dmg | head -n1)
+          mv "$dmg" "ES-DE-Turbo-${version}-arm64.dmg"
+          md5=$(md5 -q "ES-DE-Turbo-${version}-arm64.dmg")
+          printf '{"name":"macOSApple","filename":"ES-DE-Turbo-%s-arm64.dmg","md5":"%s"}' \
+            "$version" "$md5" > meta-macos.json
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: |
+            ES-DE-Turbo-*.dmg
+            meta-macos.json
+
+  publish:
+    name: Publish release
+    needs: [build-windows, build-linux, build-macos]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate tag and capture version info
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          header_version=$(sed -n 's/^#define PROGRAM_VERSION_STRING "\([^"]*\)"/\1/p' es-core/src/ApplicationVersion.h)
+          if [ "$tag_version" != "$header_version" ]; then
+            echo "Tag '$tag_version' does not match PROGRAM_VERSION_STRING '$header_version'" >&2
+            exit 1
+          fi
+          release_num=$(sed -n 's/^#define PROGRAM_RELEASE_NUMBER *\([0-9]*\).*/\1/p' es-core/src/ApplicationVersion.h)
+          echo "VERSION=$tag_version" >> "$GITHUB_ENV"
+          echo "RELEASE_NUM=$release_num" >> "$GITHUB_ENV"
+          echo "RELEASE_DATE=$(date +%F)" >> "$GITHUB_ENV"
+          echo "Tag version '$tag_version' (release $release_num) matches PROGRAM_VERSION_STRING"
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: artifacts
+
+      - name: Generate checksums
+        run: |
+          : > CHECKSUMS.txt
+          for f in artifacts/ES-DE-Turbo-*; do
+            [ -f "$f" ] || continue
+            printf '%s  %s\n' "$(sha256sum "$f" | cut -d' ' -f1)" "$(basename "$f")" >> CHECKSUMS.txt
+          done
+          cat CHECKSUMS.txt
 
       - name: Upload release assets
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ES-DE-Turbo-*-x64_Portable.zip
+            artifacts/ES-DE-Turbo-*.zip
+            artifacts/ES-DE-Turbo-*.AppImage
+            artifacts/ES-DE-Turbo-*.dmg
             CHECKSUMS.txt
           generate_release_notes: true
 
       - name: Update release feed
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: pwsh
         run: |
-          $version = $env:VERSION
-          $filename = $env:ZIP_FILENAME
-          $md5 = $env:ZIP_MD5
-          $releaseNum = $env:RELEASE_NUM
-          $releaseDate = $env:RELEASE_DATE
-          $tag = $env:GITHUB_REF_NAME
-          $url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag/$filename"
-
           git fetch --depth=1 origin main
           git checkout -B main origin/main
 
-          $json = Get-Content -Path 'latest_release.json' -Raw | ConvertFrom-Json
-          $json.stable.version = $version
-          $json.stable.release = $releaseNum
-          $json.stable.date = $releaseDate
-          $json.stable.packages[0].filename = $filename
-          $json.stable.packages[0].url = $url
-          $json.stable.packages[0].md5 = $md5
-          $json | ConvertTo-Json -Depth 10 | Set-Content -Path 'latest_release.json' -Encoding utf8
+          python3 - <<'PY'
+          import json
+          import glob
+          import os
+
+          version = os.environ['VERSION']
+          release_num = os.environ['RELEASE_NUM']
+          release_date = os.environ['RELEASE_DATE']
+          tag = os.environ['GITHUB_REF_NAME']
+          repo = os.environ['GITHUB_REPOSITORY']
+
+          with open('latest_release.json') as f:
+              data = json.load(f)
+
+          stable = data['stable']
+          stable['version'] = version
+          stable['release'] = release_num
+          stable['date'] = release_date
+
+          for meta_file in sorted(glob.glob('artifacts/meta-*.json')):
+              with open(meta_file) as f:
+                  meta = json.load(f)
+              filename = meta['filename']
+              url = f'https://github.com/{repo}/releases/download/{tag}/{filename}'
+              pkg = next((p for p in stable['packages'] if p.get('name') == meta['name']), None)
+              if pkg is None:
+                  pkg = {'name': meta['name'], 'message': ''}
+                  stable['packages'].append(pkg)
+              pkg['filename'] = filename
+              pkg['url'] = url
+              pkg['md5'] = meta['md5']
+
+          with open('latest_release.json', 'w') as f:
+              json.dump(data, f, indent=4)
+              f.write('\n')
+          PY
 
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add latest_release.json
-          if (git diff --cached --quiet) {
-            Write-Output 'latest_release.json unchanged, nothing to commit'
-          } else {
-            git commit -m "Update latest_release.json for $version"
+          if git diff --cached --quiet; then
+            echo 'latest_release.json unchanged, nothing to commit'
+          else
+            git commit -m "Update latest_release.json for $VERSION"
             git push origin main
-          }
+          fi

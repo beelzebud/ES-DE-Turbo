@@ -197,10 +197,10 @@ Notes:
 - Ninja build artifacts are gitignored; the in-source build directory is the
   repository root.
 - A GitHub Actions workflow (`.github/workflows/release.yml`) builds the
-  Windows portable zip, publishes it as a GitHub release, and updates
-  `latest_release.json` automatically whenever a `v*` tag is pushed. In CI the
-  setup script skips the interactive OpenSSL installer, which is not required
-  to build or link.
+  Windows portable zip, Linux AppImage and macOS DMG, publishes them as a
+  GitHub release, and updates `latest_release.json` automatically whenever a
+  `v*` tag is pushed. In CI the setup script skips the interactive OpenSSL
+  installer, which is not required to build or link.
 
 ## Application updater
 
@@ -218,8 +218,9 @@ To cut a new release:
 2. Commit and push, then tag the commit `v<version>` (the tag must match
    `PROGRAM_VERSION_STRING`). Pushing the tag triggers the GitHub Actions
    workflow (`.github/workflows/release.yml`), which builds the Windows zip,
-   publishes it as a GitHub release, and updates `latest_release.json`
-   (version, release, date, filename, url and md5) on the default branch.
+   Linux AppImage and macOS DMG, publishes them as a GitHub release, and
+   updates `latest_release.json` (version, release, date, filename, url and
+   md5) on the default branch.
 
 The file at the root of the default branch is what the running application
 downloads.
