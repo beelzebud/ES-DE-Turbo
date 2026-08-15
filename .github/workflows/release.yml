@@ -1,0 +1,148 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Windows portable release
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate tag matches version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $tagVersion = $env:GITHUB_REF_NAME -replace '^v', ''
+          $headerVersion = (Select-String -Path 'es-core/src/ApplicationVersion.h' -Pattern '#define\s+PROGRAM_VERSION_STRING\s+"([^"]+)"').Matches[0].Groups[1].Value
+          if ($tagVersion -ne $headerVersion) {
+            Write-Error "Tag '$tagVersion' does not match PROGRAM_VERSION_STRING '$headerVersion'"
+            exit 1
+          }
+          Write-Output "Tag version '$tagVersion' matches PROGRAM_VERSION_STRING"
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Add 7-Zip to PATH
+        shell: pwsh
+        run: |
+          if (Test-Path 'C:\Program Files\7-Zip') {
+            Add-Content $env:GITHUB_PATH 'C:\Program Files\7-Zip'
+          }
+
+      - name: Set up external dependencies
+        shell: cmd
+        run: call tools\Windows_dependencies_setup.bat
+
+      - name: Build external dependencies
+        shell: cmd
+        run: call tools\Windows_dependencies_build.bat
+
+      - name: Configure
+        shell: cmd
+        run: cmake -G Ninja -DCMAKE_BUILD_TYPE=Release .
+
+      - name: Build
+        shell: cmd
+        run: cmake --build . -j %NUMBER_OF_PROCESSORS%
+
+      - name: Package portable zip
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          $staging = "ES-DE-Turbo-$version-x64_Portable"
+          $zip = "$staging.zip"
+          if (Test-Path $staging) { Remove-Item -Recurse -Force $staging }
+
+          New-Item -ItemType Directory -Path $staging | Out-Null
+          Copy-Item -Path 'ES-DE.exe' -Destination $staging
+          Get-ChildItem -Path '*.dll' | Copy-Item -Destination $staging
+          Copy-Item -Path 'resources','themes','licenses' -Destination $staging -Recurse
+
+          New-Item -ItemType Directory -Path "$staging/es-pdf-converter" | Out-Null
+          Copy-Item -Path 'es-pdf-converter/es-pdf-convert.exe' -Destination "$staging/es-pdf-converter/"
+          Get-ChildItem -Path 'es-pdf-converter/*.dll' | Copy-Item -Destination "$staging/es-pdf-converter/"
+
+          Copy-Item -Path 'LICENSE','README.md','CHANGELOG.md','FASTLOADING.md' -Destination $staging
+          New-Item -ItemType File -Path "$staging/portable.txt" | Out-Null
+
+          7z a -tzip -mx=7 $zip $staging
+
+          $sha = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLower()
+          $md5 = (Get-FileHash -Path $zip -Algorithm MD5).Hash.ToLower()
+          $bytes = (Get-Item -Path $zip).Length
+          $lines = @(
+            "ES-DE-Turbo $version (Windows x64, Portable)",
+            "",
+            "File:  $zip",
+            "Size:  $bytes bytes",
+            "",
+            "SHA256:  $sha",
+            "MD5:     $md5"
+          )
+          $lines | Out-File -Encoding ascii -FilePath 'CHECKSUMS.txt'
+
+          $releaseNum = (Select-String -Path 'es-core/src/ApplicationVersion.h' -Pattern '#define\s+PROGRAM_RELEASE_NUMBER\s+(\d+)').Matches[0].Groups[1].Value
+          $releaseDate = (Get-Date -Format 'yyyy-MM-dd')
+          @(
+            "VERSION=$version",
+            "ZIP_FILENAME=$zip",
+            "ZIP_MD5=$md5",
+            "RELEASE_NUM=$releaseNum",
+            "RELEASE_DATE=$releaseDate"
+          ) | ForEach-Object { Add-Content -Path $env:GITHUB_ENV -Value $_ }
+
+          Write-Output "Built $zip ($bytes bytes)"
+
+      - name: Upload release assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ES-DE-Turbo-*-x64_Portable.zip
+            CHECKSUMS.txt
+          generate_release_notes: true
+
+      - name: Update release feed
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $version = $env:VERSION
+          $filename = $env:ZIP_FILENAME
+          $md5 = $env:ZIP_MD5
+          $releaseNum = $env:RELEASE_NUM
+          $releaseDate = $env:RELEASE_DATE
+          $tag = $env:GITHUB_REF_NAME
+          $url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag/$filename"
+
+          git fetch --depth=1 origin main
+          git checkout -B main origin/main
+
+          $json = Get-Content -Path 'latest_release.json' -Raw | ConvertFrom-Json
+          $json.stable.version = $version
+          $json.stable.release = $releaseNum
+          $json.stable.date = $releaseDate
+          $json.stable.packages[0].filename = $filename
+          $json.stable.packages[0].url = $url
+          $json.stable.packages[0].md5 = $md5
+          $json | ConvertTo-Json -Depth 10 | Set-Content -Path 'latest_release.json' -Encoding utf8
+
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add latest_release.json
+          if (git diff --cached --quiet) {
+            Write-Output 'latest_release.json unchanged, nothing to commit'
+          } else {
+            git commit -m "Update latest_release.json for $version"
+            git push origin main
+          }

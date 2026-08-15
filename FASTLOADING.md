@@ -196,6 +196,11 @@ Notes:
   executable.
 - Ninja build artifacts are gitignored; the in-source build directory is the
   repository root.
+- A GitHub Actions workflow (`.github/workflows/release.yml`) builds the
+  Windows portable zip, publishes it as a GitHub release, and updates
+  `latest_release.json` automatically whenever a `v*` tag is pushed. In CI the
+  setup script skips the interactive OpenSSL installer, which is not required
+  to build or link.
 
 ## Application updater
 
@@ -206,17 +211,18 @@ official build.
 
 To cut a new release:
 
-1. Bump `PROGRAM_VERSION_*` and `PROGRAM_RELEASE_NUMBER` in
-   `es-core/src/ApplicationVersion.h`. The release number **must increase**,
-   because the updater only reports a newer version when the feed's release
-   number is greater than the running build's.
-2. Update `latest_release.json` in the repo root: set `stable.version`,
-   `stable.release` and `stable.date`, and point the `WindowsPortable` package
-   at the new GitHub release asset
-   (`https://github.com/beelzebud/ES-DE-Turbo/releases/download/<tag>/<asset>`)
-   with its MD5.
-3. Tag and publish the release on GitHub. The file at the root of the default
-   branch is what the running application downloads.
+1. Bump `PROGRAM_VERSION_*`, `PROGRAM_VERSION_STRING` and
+   `PROGRAM_RELEASE_NUMBER` in `es-core/src/ApplicationVersion.h`. The release
+   number **must increase**, because the updater only reports a newer version
+   when the feed's release number is greater than the running build's.
+2. Commit and push, then tag the commit `v<version>` (the tag must match
+   `PROGRAM_VERSION_STRING`). Pushing the tag triggers the GitHub Actions
+   workflow (`.github/workflows/release.yml`), which builds the Windows zip,
+   publishes it as a GitHub release, and updates `latest_release.json`
+   (version, release, date, filename, url and md5) on the default branch.
+
+The file at the root of the default branch is what the running application
+downloads.
 
 The updater can still be disabled entirely, either per-user (`CHECK FOR
 APPLICATION UPDATES` → `NEVER` in the menu, which sets
